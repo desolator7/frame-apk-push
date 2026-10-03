@@ -1,0 +1,103 @@
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+import shutil
+import subprocess
+import argparse
+import zipfile
+
+assert sys.platform == 'win32'          # windows only
+assert sys.prefix != sys.base_prefix    # must be executed in the virtualenv
+
+from __init__ import WINDOWS_PYTHON_PREFIX
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SETUP_DIR = os.path.abspath(os.path.dirname(__file__))
+CLIENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), r'..\client'))
+BUILD_DIR = os.path.join(ROOT_DIR, 'build')
+DIST_DIR = os.path.join(ROOT_DIR, 'dist')
+
+# cursed, but delicious
+sys.path.append(CLIENT_DIR)
+from devkit_client import locate_cygwin_tools
+from devkit_client.icon import ICON_FILENAME
+sys.path.pop()
+
+# don't let python buffering get in the way or readable output
+# https://stackoverflow.com/questions/107705/disable-output-buffering
+class Unbuffered(object):
+   def __init__(self, stream):
+       self.stream = stream
+   def write(self, data):
+       self.stream.write(data)
+       self.stream.flush()
+   def writelines(self, datas):
+       self.stream.writelines(datas)
+       self.stream.flush()
+   def __getattr__(self, attr):
+       return getattr(self.stream, attr)
+
+
+if __name__ == '__main__':
+    sys.stdout = Unbuffered(sys.stdout)
+    sys.stderr = Unbuffered(sys.stderr)
+
+    parser = argparse.ArgumentParser(description='Prepare a package of the devkit client for Windows')
+    parser.add_argument('--refresh', required=False, action='store_true', default='.', help='Refresh only')
+    conf = parser.parse_args()
+
+    if not conf.refresh:
+        for dir_path in (BUILD_DIR, DIST_DIR):
+            if os.path.exists(dir_path):
+                assert os.path.isdir(dir_path)
+                print(f'Delete {dir_path}')
+                shutil.rmtree(dir_path)
+
+    version_tag = subprocess.check_output(['git', 'describe'], cwd=CLIENT_DIR, universal_newlines=True).strip()
+    print(f'Refresh version: {version_tag}')
+    open(os.path.join(CLIENT_DIR, r'devkit_client\version.py'), 'wt').write(f'__version__ = "{version_tag}"')
+
+    print(f'Build the package')
+    subprocess.check_call([r'.\.venv\Scripts\python.exe', r'.\setup\cxfreeze-windows.py', 'build'], cwd=ROOT_DIR)
+
+    shutil.copytree(os.path.join(BUILD_DIR, f'exe.win-amd64-{WINDOWS_PYTHON_PREFIX}'), DIST_DIR, dirs_exist_ok=True)
+
+    for name in ('devkit-msvsmon', 'devkit-utils', 'gpuvis'):
+        dir_path = os.path.join(CLIENT_DIR, name)
+        shutil.copytree(dir_path, os.path.join(DIST_DIR, name), dirs_exist_ok=True)
+
+    cygroot =  os.path.dirname(locate_cygwin_tools()[0])
+    assert os.path.isdir(cygroot)
+    cygwin_dst_dir = os.path.join(DIST_DIR, 'cygroot/bin')
+    os.makedirs(cygwin_dst_dir, exist_ok=True)
+    for name in [
+        'cygpath.exe',
+        'rsync.exe',
+        'ssh.exe',
+        'cygcrypto-1.1.dll',    # rsync.exe
+        'cygcrypto-3.dll',      # ssh.exe
+        'cygwin1.dll',
+        'cygz.dll',
+        'cygiconv-2.dll',
+        'cygcom_err-2.dll',
+        'cyggcc_s-seh-1.dll',
+        'cyggssapi_krb5-2.dll',
+        'cygintl-8.dll',
+        'cygk5crypto-3.dll',
+        'cygkrb5-3.dll',
+        'cygkrb5support-0.dll',
+        'cyglz4-1.dll',
+        'cygzstd-1.dll',
+        'cygxxhash-0.dll'
+        ]:
+        shutil.copy(os.path.join(cygroot, name), cygwin_dst_dir)
+
+    shutil.copytree(os.path.join(ROOT_DIR, 'third-party-licenses'), os.path.join(DIST_DIR, 'third-party-licenses'), dirs_exist_ok=True)
+
+    shutil.copy(os.path.join(ROOT_DIR, 'ChangeLog'), DIST_DIR)
+    shutil.copy(os.path.join(CLIENT_DIR, ICON_FILENAME), DIST_DIR)
+
+    zippath = os.path.join(ROOT_DIR, 'devkit-gui-win64.zip')
+    print(f'Creating archive: {zippath}')
+    subprocess.check_call(['7z', 'a', zippath, '.'], cwd=DIST_DIR)

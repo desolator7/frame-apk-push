@@ -1,0 +1,18 @@
+{
+  "target": "Android 11 / API 30 / AArch64",
+  "clang": "clang version 22.1.8",
+  "r8": {
+    "version": "9.4.28",
+    "source": "https://dl.google.com/dl/android/maven2/com/android/tools/r8/9.4.28/r8-9.4.28.jar",
+    "sha256": "51af0a9d41cc541d619064224aec628923bd779cbcc5a62cb914ea2d669c4063"
+  },
+  "files": {
+    "native/frame_zygote.c": "a4746b2698836723dece681122d3f83f6fa3c43527209731dbc783dcb9b21a56",
+    "native/FrameRestrictions.java": "ed213f3e85c4226800282cfc11697b0c8fd1e0f4f267cc5d6c377a23449504ab",
+    "native/FrameBrowserPrefs.java": "53ab911f223ddfe917aa5de5586ee0bf72ae7c26b7928ee7cc7e354d74d4024f",
+    "native/FrameDevtools.java": "4840222b745e857f7ae1eecef9a988f52726dc66c12279a150016bd528a4c30e",
+    "native/FrameBrowserXR.java": "c2e3e00e02bfae3e5515b4aea31bab24a4d295864b2c9e14f737d621ee8c3cca",
+    "assets/libframe-zygote.so": "b011e36aac7cc3e1e4e8a7d453fc244471a5dfa59c034f7596e9c4c0c75a214b",
+    "assets/frame-services.jar": "b7c102ffd69299c4e1987d4396e62a3f81e7386435174319bbb50a2f90d91686"
+  }
+}

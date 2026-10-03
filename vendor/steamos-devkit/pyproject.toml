@@ -1,0 +1,48 @@
+[project]
+name = "steamos-devkit"
+version = "0.1.0"
+description = "SteamOS Devkit"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "pysdl2",
+    "pysdl2-dll",
+    # Temporary: Force PyOpenGL 3.1.6 on Linux due to compatibility issues
+    # See: https://gitlab.steamos.cloud/devkit/steamos-devkit/-/issues/40
+    "pyopengl==3.1.6; sys_platform == 'linux'",
+    "pyopengl; sys_platform == 'win32'",
+    "signalslot>=0.2.0",
+    "ifaddr",
+    "appdirs",
+    "bcrypt",
+    "cffi",
+    "cryptography",
+    "cx-freeze>=6.16.0; sys_platform == 'win32'",
+    "pywin32; sys_platform == 'win32'",
+    "shiv; sys_platform == 'linux'",
+    "idna",
+    "netifaces-plus",
+    "paramiko",
+    "pycparser",
+    "pynacl",
+    "six",
+    # Using PR #392 for Python >= 3.13 support
+    # https://github.com/pyimgui/pyimgui/pull/392
+    "imgui[sdl2] @ git+https://github.com/pyimgui/pyimgui.git@5842ee415f9357a9418cc8341d621b6e1e2aaddd",
+    "zeroconf",
+    "xdialog @ git+https://github.com/TTimo/xdialog.git@c55ca29",
+]
+
+[project.optional-dependencies]
+dev = [
+    "debugpy",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+[tool.uv]
+package = false

@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Devkit GUI",
+            "type": "debugpy",
+            "request": "launch",
+            "windows": { "python": "${workspaceFolder}/.venv/Scripts/python.exe" },
+            "linux": { "python": "${workspaceFolder}/.venv/bin/python" },
+            "program": "${workspaceFolder}/client/devkit-gui.py",
+            "args": ["--valve", "--logfile", "${workspaceFolder}/devkit-gui.log"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
+        {
+            "name": "Python: Prepare Public Source",
+            "type": "debugpy",
+            "request": "launch",
+            "windows": { "python": "${workspaceFolder}/.venv/Scripts/python.exe" },
+            "linux": { "python": "${workspaceFolder}/.venv/bin/python" },
+            "program": "${workspaceFolder}/patches/prepare-public-source.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        }
+    ]
+}

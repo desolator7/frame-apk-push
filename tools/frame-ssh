@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""OpenSSH wrapper; the tunnel binds only this connection to a LAN interface."""
+import os
+from pathlib import Path
+import shlex
+import sys
+interface = os.environ.get('FRAME_APK_PUSH_INTERFACE')
+args = ['/usr/bin/ssh']
+if interface:
+    tunnel = Path(__file__).with_name('frame-tunnel.py')
+    command = shlex.join([os.environ['FRAME_APK_PUSH_PYTHON'], str(tunnel), interface, '%h', '%p'])
+    args += ['-o', 'ProxyCommand=' + command]
+os.execv(args[0], args + sys.argv[1:])

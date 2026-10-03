@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+import subprocess
+import argparse
+import tempfile
+import zipfile
+import shutil
+import zipapp
+
+assert sys.platform == 'linux'
+assert sys.prefix != sys.base_prefix    # must be executed in the virtualenv
+
+SETUP_DIR = os.path.abspath(os.path.dirname(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+CLIENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../client'))
+
+# cursed, but delicious
+sys.path.append(CLIENT_DIR)
+from devkit_client.icon import ICON_FILENAME
+sys.path.pop()
+
+# don't let python buffering get in the way or readable output
+# https://stackoverflow.com/questions/107705/disable-output-buffering
+class Unbuffered(object):
+   def __init__(self, stream):
+       self.stream = stream
+   def write(self, data):
+       self.stream.write(data)
+       self.stream.flush()
+   def writelines(self, datas):
+       self.stream.writelines(datas)
+       self.stream.flush()
+   def __getattr__(self, attr):
+       return getattr(self.stream, attr)
+
+
+if __name__ == '__main__':
+    sys.stdout = Unbuffered(sys.stdout)
+    sys.stderr = Unbuffered(sys.stderr)
+
+    parser = argparse.ArgumentParser(description='Prepare a shiv package of the devkit client for Linux')
+    parser.add_argument('--output-directory', required=False, action='store', default='.', help='Output directory')
+    conf = parser.parse_args()
+
+    version_tag = subprocess.check_output(['git', 'describe'], cwd=CLIENT_DIR, universal_newlines=True).strip()
+    print(f'Refresh version: {version_tag}')
+    open(os.path.join(CLIENT_DIR, 'devkit_client/version.py'), 'wt').write(f'__version__ = "{version_tag}"')
+
+    print(f'Prepare shiv package for {CLIENT_DIR}')
+    setup_path = os.path.join(CLIENT_DIR, 'setup.py')
+    if not os.path.islink(setup_path):
+        assert not os.path.exists(setup_path)
+        dst_path = os.path.join(SETUP_DIR, 'shiv-linux-setup.py')
+        print(f'Create symlink {setup_path} -> {dst_path}')
+        os.symlink(dst_path, setup_path)
+
+    venv_dir = os.path.join(ROOT_DIR, '.venv')
+    assert sys.version_info[0] == 3
+    python_minor = sys.version_info[1]
+    site_packages_dir = os.path.join(venv_dir, f'lib/python3.{python_minor}/site-packages')
+    interpreter = f'/usr/bin/env python3.{python_minor}'
+    output_name = f'devkit-gui-cp3{python_minor}.pyz'
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        intermediate_path = os.path.join(tmpdirname, output_name)
+        cmd=[ sys.executable,
+            '-m', 'shiv',
+            '--site-packages', site_packages_dir,
+            '--python', interpreter,
+            '--entry-point', 'devkit_client.gui2.main',
+            '--output-file', intermediate_path,
+            '.'
+            ]
+        print(f"{' '.join(cmd)}")
+        subprocess.check_call(cmd, cwd=CLIENT_DIR)
+        # rebuild the .pyz with the devkit-utils/ folder inserted
+        with tempfile.TemporaryDirectory() as zipappdirname:
+            src_dir = os.path.join(CLIENT_DIR, 'devkit-utils')
+            print(f'Adding {src_dir} to the .pyz')
+            z = zipfile.ZipFile(intermediate_path)
+            z.extractall(zipappdirname)
+            shutil.copytree(
+                src_dir,
+                os.path.join(zipappdirname, 'site-packages/devkit-utils')
+                )
+            shutil.copy(os.path.join(ROOT_DIR, 'ChangeLog'), zipappdirname)
+            shutil.copy(os.path.join(ROOT_DIR, 'client', ICON_FILENAME), os.path.join(zipappdirname, 'site-packages'))
+            output_path = os.path.abspath(os.path.join(conf.output_directory, output_name))
+            zipapp.create_archive(
+                zipappdirname,
+                output_path,
+                interpreter=interpreter
+            )
+            print(f'Wrote {output_path}')

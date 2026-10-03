@@ -1,0 +1,8 @@
+*~
+client/setup.py
+__pycache__
+build
+dist
+.pc
+devkit-gui.log
+imgui.ini
