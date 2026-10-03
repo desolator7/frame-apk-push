@@ -7,6 +7,7 @@ from frame_apk_push import gui
 @pytest.fixture
 def window(qtbot, monkeypatch, tmp_path):
     monkeypatch.setattr(gui, 'DATA', tmp_path)
+    (tmp_path / 'settings.json').write_text(json.dumps({'language': 'de'}))
     # Suppress only startup probe; tests choose operations explicitly.
     original = gui.Window.run
     monkeypatch.setattr(gui.Window, 'run', lambda *a, **k: None)

@@ -1,4 +1,4 @@
-"""German Qt desktop assistant. Device operations run out of process."""
+"""Bilingual Qt desktop assistant. Device operations run out of process."""
 from __future__ import annotations
 import json
 import os
@@ -12,6 +12,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QLabel, QPushButton, QTabWidget, QLineEdit, QComboBox, QCheckBox, QProgressBar,
     QPlainTextEdit, QFileDialog, QGroupBox, QScrollArea, QMessageBox)
 from .core import ROOT, DATA, GAME_ID, SAMPLES, CONTROLLER_SAMPLE, validate_host, webxr_url, redact
+from . import i18n
+from .i18n import (LocalizedButton, LocalizedCheckBox, LocalizedGroupBox,
+                   LocalizedLabel, LocalizedLineEdit, LocalizedPlainTextEdit, translate)
 
 STYLE = '''
 QWidget { background: #111a24; color: #e6edf5; font-size: 14px; }
@@ -36,7 +39,7 @@ QCheckBox { spacing: 8px; }
 
 
 def text_label(text):
-    widget = QLabel(text)
+    widget = LocalizedLabel(text)
     widget.setWordWrap(True)
     widget.setTextFormat(Qt.TextFormat.PlainText)
     widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -46,7 +49,7 @@ def text_label(text):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Frame APK Push · Chromium XR')
+        self.setWindowTitle(translate('Frame APK Push · WebXR auf Steam Frame'))
         self.resize(980, 850)
         self.process = None
         self.action = None
@@ -75,6 +78,11 @@ class Window(QMainWindow):
             self.config = json.loads((DATA / 'settings.json').read_text())
         except (OSError, ValueError):
             pass
+        self.language = self.config.get('language', 'en')
+        if self.language not in ('en', 'de'):
+            self.language = 'en'
+        i18n.set_language(self.language)
+        self._tab_titles = []
         try:
             saved = json.loads((DATA / 'browser.json').read_text())
             if Path(saved['apk']).is_file():
@@ -84,10 +92,20 @@ class Window(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(24, 20, 24, 20)
-        title = QLabel('Chromium auf deinem Frame')
+        title_row = QHBoxLayout()
+        title = LocalizedLabel('XR-Browser auf deinem Frame')
         title.setObjectName('headline')
-        layout.addWidget(title)
-        sub = QLabel('Verbinden · installieren · WebXR am Headset testen')
+        title_row.addWidget(title, 1)
+        self.language_label = text_label('Sprache')
+        title_row.addWidget(self.language_label)
+        self.language_combo = QComboBox()
+        self.language_combo.addItem('English', 'en')
+        self.language_combo.addItem('Deutsch', 'de')
+        self.language_combo.setCurrentIndex(0 if self.language == 'en' else 1)
+        self.language_combo.currentIndexChanged.connect(self.change_language)
+        title_row.addWidget(self.language_combo)
+        layout.addLayout(title_row)
+        sub = LocalizedLabel('Verbinden · installieren · WebXR am Headset testen')
         sub.setObjectName('subheading')
         layout.addWidget(sub)
         self.tabs = QTabWidget()
@@ -103,25 +121,25 @@ class Window(QMainWindow):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         row.addWidget(self.progress, 1)
-        self.cancel_button = QPushButton('Abbrechen')
+        self.cancel_button = LocalizedButton('Abbrechen')
         self.cancel_button.clicked.connect(self.cancel)
         self.cancel_button.setEnabled(False)
         row.addWidget(self.cancel_button)
-        self.retry = QPushButton('Wiederholen')
+        self.retry = LocalizedButton('Wiederholen')
         self.retry.clicked.connect(self.repeat)
         self.retry.setEnabled(False)
         row.addWidget(self.retry)
         layout.addLayout(row)
         log_row = QHBoxLayout()
-        self.log_toggle = QCheckBox('Diagnoseprotokoll anzeigen')
+        self.log_toggle = LocalizedCheckBox('Diagnoseprotokoll anzeigen')
         self.log_toggle.toggled.connect(lambda enabled: self.log.setVisible(enabled))
         log_row.addWidget(self.log_toggle)
         log_row.addStretch()
-        export = QPushButton('Protokoll exportieren')
+        export = LocalizedButton('Protokoll exportieren')
         export.clicked.connect(self.export)
         log_row.addWidget(export)
         layout.addLayout(log_row)
-        self.log = QPlainTextEdit()
+        self.log = LocalizedPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(170)
         self.log.setMaximumBlockCount(4000)
@@ -139,6 +157,28 @@ class Window(QMainWindow):
         self.update_controls()
         QTimer.singleShot(0, lambda: self.run('check'))
 
+    def change_language(self, index):
+        language = self.language_combo.itemData(index)
+        if language not in ('en', 'de') or language == self.language:
+            return
+        self.language = language
+        self.config['language'] = language
+        i18n.set_language(language)
+        try:
+            DATA.mkdir(parents=True, exist_ok=True)
+            (DATA / 'settings.json').write_text(json.dumps(self.config))
+        except OSError as error:
+            self.log_line(f'Spracheinstellung konnte nicht gespeichert werden: {error}')
+        self.setWindowTitle(translate('Frame APK Push · WebXR auf Steam Frame'))
+        for widget in self.findChildren(QWidget):
+            retranslate = getattr(widget, 'retranslate', None)
+            if callable(retranslate):
+                retranslate()
+        for index, title in enumerate(self._tab_titles):
+            self.tabs.setTabText(index, translate(title))
+        self.devices.setItemText(0, translate(self._device_placeholder))
+        self.refresh_statuses()
+
     def tab(self, title):
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -146,11 +186,12 @@ class Window(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
-        self.tabs.addTab(scroll, title)
+        self._tab_titles.append(title)
+        self.tabs.addTab(scroll, translate(title))
         return layout
 
     def button(self, layout, text, fn, primary=False):
-        button = QPushButton(text)
+        button = LocalizedButton(text)
         if primary:
             button.setObjectName('primary')
         button.clicked.connect(fn)
@@ -159,7 +200,7 @@ class Window(QMainWindow):
         return button
 
     def group(self, layout, title):
-        box = QGroupBox(title)
+        box = LocalizedGroupBox(title)
         group_layout = QVBoxLayout(box)
         layout.addWidget(box)
         return group_layout
@@ -173,7 +214,7 @@ class Window(QMainWindow):
         self.button(box, 'Voraussetzungen erneut prüfen', lambda: self.run('check'))
         self.install_devkit = self.button(box, 'SteamOS Devkit Client installieren', self.steam_install, True)
         self.button(box, 'Google ADB-Plattformwerkzeuge herunterladen', lambda: self.run('adb'))
-        box.addWidget(text_label('Steam zeigt seinen Installationsdialog. Danach erkennt die App den Devkit Client automatisch. SSH und rsync fehlen? Unter CachyOS: sudo pacman -S openssh rsync'))
+        box.addWidget(text_label('Steam zeigt seinen Installationsdialog. Danach erkennt die App den Devkit Client automatisch. SSH und rsync fehlen? Arch: sudo pacman -S openssh rsync · Debian: sudo apt install openssh-client rsync'))
         box = self.group(layout, 'Headset vorbereiten')
         box.addWidget(text_label('1. PC und Frame mit demselben Netzwerk verbinden.\n2. Am Frame: Einstellungen → System → Entwicklermodus aktivieren.\n3. Einstellungen → Entwickler → Neuen Host koppeln öffnen.\n4. Im nächsten Schritt das Frame auswählen und die Kopplung am Headset bestätigen.'))
         self.button(box, 'Weiter: Frame verbinden', lambda: self.tabs.setCurrentIndex(1))
@@ -184,15 +225,16 @@ class Window(QMainWindow):
         layout.addWidget(text_label('Die Suche findet Geräte mit Valves Devkit-Dienst. Falls das Frame fehlt, seine WLAN-IP oder seinen Hostnamen eingeben.'))
         box = self.group(layout, 'Steam Frame auswählen')
         self.devices = QComboBox()
-        self.devices.addItem('Noch keine Geräte gesucht', None)
+        self._device_placeholder = 'Noch keine Geräte gesucht'
+        self.devices.addItem(translate(self._device_placeholder), None)
         self.devices.currentIndexChanged.connect(self.select_device)
         box.addWidget(self.devices)
         self.button(box, 'Im Netzwerk suchen', lambda: self.run('discover'))
-        self.host = QLineEdit(self.config.get('host', 'frame'))
+        self.host = LocalizedLineEdit(self.config.get('host', 'frame'))
         self.host.setPlaceholderText('frame oder 203.0.113.50')
         self.host.textChanged.connect(self.target_changed)
         box.addWidget(self.host)
-        self.port = QLineEdit(str(self.config.get('port', 32000)))
+        self.port = LocalizedLineEdit(str(self.config.get('port', 32000)))
         self.port.setPlaceholderText('Devkit-Port, normalerweise 32000')
         self.port.textChanged.connect(self.target_changed)
         box.addWidget(self.port)
@@ -208,16 +250,16 @@ class Window(QMainWindow):
         layout = self.tab('3  Chromium installieren')
         box = self.group(layout, 'Browser vorbereiten')
         box.addWidget(text_label('Download direkt aus Googles Chromium-Snapshot-Archiv: Android_Arm64 → ChromePublic.apk. Snapshots erhalten keine automatischen Updates; neue Revisionen werden nur auf deinen Klick geladen. Für H.264/AAC-Videos eine passende vollständige Chrome-/Chromium-APK lokal auswählen; der Standard-Snapshot unterstützt diese Codecs nicht. OpenXR und Videowiedergabe müssen am Frame geprüft werden.'))
-        self.flatscreen = QCheckBox('Flatscreen-Marker für Browseroberfläche verwenden (experimentell)')
+        self.flatscreen = LocalizedCheckBox('Flatscreen-Marker für Browseroberfläche verwenden (experimentell)')
         self.flatscreen.setChecked(self.metadata.get('flatscreen', True) if self.metadata else True)
         self.flatscreen.toggled.connect(self.browser_mode_changed)
         box.addWidget(self.flatscreen)
-        self.auto_allow_vr = QCheckBox('VR-Berechtigung automatisch erlauben (Abfrage umgehen)')
+        self.auto_allow_vr = LocalizedCheckBox('VR-Berechtigung automatisch erlauben (Abfrage umgehen)')
         self.auto_allow_vr.setChecked(self.metadata.get('auto_allow_vr', True) if self.metadata else True)
         self.auto_allow_vr.toggled.connect(self.browser_mode_changed)
         box.addWidget(self.auto_allow_vr)
         box.addWidget(text_label('Vermeidet den Absturz bei der ersten VR-Freigabe. Sichere Webseiten erhalten beim VR-Einstieg automatisch Zugriff auf Kopf- und Controllerbewegungen. Änderungen nach erneutem Übertragen und Browserstart aktiv; deaktiviert wird wieder gefragt.'))
-        self.auto_xr_prepare = QCheckBox('VR-Grafikvorbereitung automatisch im Steam-Titel starten')
+        self.auto_xr_prepare = LocalizedCheckBox('VR-Grafikvorbereitung automatisch im Steam-Titel starten')
         self.auto_xr_prepare.setChecked(self.metadata.get('auto_xr_prepare', True) if self.metadata else True)
         self.auto_xr_prepare.toggled.connect(self.browser_mode_changed)
         box.addWidget(self.auto_xr_prepare)
@@ -248,7 +290,7 @@ class Window(QMainWindow):
         self.network_button = self.button(box, 'Android-Netzwerk und Seitenprozesse prüfen', lambda: self.run_target('network'))
         box = self.group(layout, 'WebXR-Seite mit vorbereiteter Grafik')
         box.addWidget(text_label('Bereitet die Grafik bereits beim Laden für den VR-Einstieg vor. Hilft bei Seiten, deren Grafik erst zu spät für VR eingerichtet wird.'))
-        self.page_url = QLineEdit(self.config.get('webxr_url', SAMPLES))
+        self.page_url = LocalizedLineEdit(self.config.get('webxr_url', SAMPLES))
         self.page_url.setPlaceholderText('https://… – beliebige WebXR-Zieladresse')
         box.addWidget(self.page_url)
         self.prepare_button = self.button(box, 'Mit VR-Grafikvorbereitung öffnen', lambda: self.run_target('prepare_page'))
@@ -263,13 +305,13 @@ class Window(QMainWindow):
             box.addWidget(label)
         self.manual = text_label(f'Falls die Debugschnittstelle fehlt: Testseite im Chromium am Headset öffnen und „Enter VR“ drücken.\nDarstellung: {SAMPLES}\nController-Eingabe: {CONTROLLER_SAMPLE}\n\nOptional über eine Browserkonsole: navigator.xr.isSessionSupported("immersive-vr"). Ein true bestätigt noch keine funktionierende VR-Sitzung.')
         box.addWidget(self.manual)
-        self.render_ok = QCheckBox('Die immersive Sitzung zeigt die VR-Szene korrekt an')
-        self.input_ok = QCheckBox('Controller-Eingabe funktioniert in der VR-Sitzung')
+        self.render_ok = LocalizedCheckBox('Die immersive Sitzung zeigt die VR-Szene korrekt an')
+        self.input_ok = LocalizedCheckBox('Controller-Eingabe funktioniert in der VR-Sitzung')
         for checkbox in (self.render_ok, self.input_ok):
             checkbox.toggled.connect(self.update_controls)
             box.addWidget(checkbox)
         self.verify_button = self.button(box, 'Erfolgreichen Gerätetest festhalten', self.verify_vr)
-        self.failure = QLineEdit()
+        self.failure = LocalizedLineEdit()
         self.failure.setPlaceholderText('Fehler beim VR-Versuch beschreiben …')
         box.addWidget(self.failure)
         self.button(box, 'Fehlgeschlagenen VR-Versuch festhalten', self.fail_vr)
@@ -501,7 +543,8 @@ class Window(QMainWindow):
                 self.waiting_install = False
         elif self.action == 'discover':
             self.devices.clear()
-            self.devices.addItem('Gerät auswählen …', None)
+            self._device_placeholder = 'Gerät auswählen …'
+            self.devices.addItem(translate(self._device_placeholder), None)
             for device in data['devices']:
                 self.devices.addItem(f"{device['name']} · {device['host']}:{device['port']}", device)
             self.message.setText(f"{len(data['devices'])} Devkit-Gerät(e) gefunden. Bei Bedarf Hostname/IP manuell eingeben.")
@@ -651,7 +694,7 @@ class Window(QMainWindow):
                 self.run('check')
 
     def choose_apk(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Vollständige ARM64-Browser-APK auswählen', '', 'Android APK (*.apk)')
+        path, _ = QFileDialog.getOpenFileName(self, translate('Vollständige ARM64-Browser-APK auswählen'), '', translate('Android APK (*.apk)'))
         if path:
             self.run('local_apk', {'path': path, 'flatscreen': self.flatscreen.isChecked(),
                                    'auto_allow_vr': self.auto_allow_vr.isChecked(),
@@ -690,7 +733,7 @@ class Window(QMainWindow):
         self.message.setText('Fehlgeschlagenen VR-Versuch festgehalten.')
 
     def export(self):
-        path, _ = QFileDialog.getSaveFileName(self, 'Diagnoseprotokoll speichern', 'frame-xr-diagnose.json', 'JSON (*.json)')
+        path, _ = QFileDialog.getSaveFileName(self, translate('Diagnoseprotokoll speichern'), 'frame-xr-diagnose.json', translate('JSON (*.json)'))
         if path:
             report = {'statuses': self.statuses, 'browser': self.metadata, 'xr': self.xr_result,
                       'last_hardware_test': self.last_acceptance,
